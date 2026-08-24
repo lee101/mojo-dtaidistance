@@ -1,7 +1,5 @@
 """DTW kernels and their C ABI in one compilation unit."""
 
-from std.algorithm import parallelize
-from std.algorithm.backend.cpu.parallelize import sync_parallelize
 from std.math import sqrt
 from std.sys.info import simd_width_of
 
@@ -426,56 +424,31 @@ def distance_pairs(
     work: Ptr,
     result: Ptr,
 ):
-    if use_parallel != 0 and count >= 32 and count * work_stride >= 8192:
-        var task_count = min(count, 36)
-        var chunk_size = (count + task_count - 1) // task_count
+    # Mojo 1.1 moved the parallel task runtime out of the standalone standard
+    # library. Keep the C/Python ABI (including use_parallel and work_stride)
+    # stable and use the serial kernel until a public standalone replacement is
+    # available.
+    for pidx in range(count):
+        distance_pair_at(
+            data,
+            offsets,
+            pairs,
+            pidx,
+            ndim,
+            window,
+            max_dist,
+            max_step,
+            penalty,
+            psi_1b,
+            psi_1e,
+            psi_2b,
+            psi_2e,
+            inner,
+            work,
+            result,
+        )
 
-        @parameter
-        def compute_task(task_idx: Int):
-            var pidx = task_idx * chunk_size
-            var task_end = min(count, pidx + chunk_size)
-            while pidx < task_end:
-                distance_pair_at(
-                    data,
-                    offsets,
-                    pairs,
-                    pidx,
-                    ndim,
-                    window,
-                    max_dist,
-                    max_step,
-                    penalty,
-                    psi_1b,
-                    psi_1e,
-                    psi_2b,
-                    psi_2e,
-                    inner,
-                    work + task_idx * work_stride,
-                    result,
-                )
-                pidx += 1
 
-        sync_parallelize[compute_task](task_count)
-    else:
-        for pidx in range(count):
-            distance_pair_at(
-                data,
-                offsets,
-                pairs,
-                pidx,
-                ndim,
-                window,
-                max_dist,
-                max_step,
-                penalty,
-                psi_1b,
-                psi_1e,
-                psi_2b,
-                psi_2e,
-                inner,
-                work,
-                result,
-            )
 def assign_clusters(
     data: Ptr,
     offsets: IPtr,
