@@ -207,8 +207,7 @@ def dtw_paths(
 ) -> Float64:
     var rows = n + 1
     var cols = m + 1
-    for k in range(rows * cols):
-        paths[k] = inf()
+    fill_f64(paths, 0, rows * cols, inf())
     if n == 0 or m == 0:
         return inf()
     var window = window_in
@@ -273,8 +272,7 @@ def dtw_paths(
     if keep_internal == 0:
         if inner == 0:
             for k in range(rows * cols):
-                if paths[k] >= 0.0:
-                    paths[k] = sqrt(paths[k])
+                paths[k] = sqrt(paths[k])
         value = finish(value, inner)
     if psi_neg != 0:
         if best_i < n:
@@ -424,28 +422,10 @@ def distance_pairs(
     work: Ptr,
     result: Ptr,
 ):
-    # Mojo 1.1 moved the parallel task runtime out of the standalone standard
-    # library. Keep the C/Python ABI (including use_parallel and work_stride)
-    # stable and use the serial kernel until a public standalone replacement is
-    # available.
     for pidx in range(count):
         distance_pair_at(
-            data,
-            offsets,
-            pairs,
-            pidx,
-            ndim,
-            window,
-            max_dist,
-            max_step,
-            penalty,
-            psi_1b,
-            psi_1e,
-            psi_2b,
-            psi_2e,
-            inner,
-            work,
-            result,
+            data, offsets, pairs, pidx, ndim, window, max_dist, max_step,
+            penalty, psi_1b, psi_1e, psi_2b, psi_2e, inner, work, result,
         )
 
 

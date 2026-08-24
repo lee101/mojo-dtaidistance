@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import array
 import math
+import os
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -17,6 +19,8 @@ from ._core import (
 from ._lib import addr, f64, i64, lib
 
 inf = float("inf")
+_DISTANCE_WORKERS = min(36, os.cpu_count() or 1)
+_DISTANCE_POOL = ThreadPoolExecutor(max_workers=_DISTANCE_WORKERS)
 
 
 def distance(s1, s2, **kwargs) -> float:
@@ -45,9 +49,11 @@ def warping_paths(s1, s2, psi_neg=True, keep_int_repr=False, **kwargs):
     a, b, ndim = pair_arrays(s1, s2, settings.use_ndim)
     if settings.max_length_diff is not None and abs(len(a) - len(b)) > settings.max_length_diff:
         return inf, None
-    paths = np.full((len(a) + 1, len(b) + 1), inf, dtype=np.float64)
     if not len(a) or not len(b):
-        return inf, paths
+        paths = np.full((len(a) + 1, len(b) + 1), inf, dtype=np.float64)
+        paths[0, 0] = 0.0
+        return (0.0 if not len(a) and not len(b) else inf), paths
+    paths = np.empty((len(a) + 1, len(b) + 1), dtype=np.float64)
     d = lib().mdd_paths(
         addr(a), addr(b), len(a), len(b), ndim,
         *call_values(settings, a, b, ndim),
@@ -217,16 +223,28 @@ def distance_matrix(
             and len(pairs_list) >= 32
             and len(pairs_list) * work_stride >= 8192
         )
-        work_slots = min(len(pairs_list), 36) if parallel_batch else 1
+        work_slots = min(len(pairs_list), _DISTANCE_WORKERS) if parallel_batch else 1
         work = np.empty(work_slots * work_stride, dtype=np.float64)
         psi = settings.split_psi()
-        lib().mdd_distance_pairs(
-            addr(data), addr(offsets), addr(pairs), len(pairs_list), ndim,
-            int(settings.window or 0), float(settings.max_dist or 0.0),
-            float(settings.max_step or 0.0), float(settings.penalty or 0.0),
-            *psi, inner_code(settings.inner_dist), int(use_parallel),
-            work_stride, addr(work), addr(result)
+        args = (
+            addr(data), addr(offsets), ndim, int(settings.window or 0),
+            float(settings.max_dist or 0.0), float(settings.max_step or 0.0),
+            float(settings.penalty or 0.0), *psi, inner_code(settings.inner_dist),
         )
+
+        def run_chunk(worker):
+            first = worker * len(pairs_list) // work_slots
+            last = (worker + 1) * len(pairs_list) // work_slots
+            lib().mdd_distance_pairs(
+                args[0], args[1], addr(pairs[first:last]), last - first,
+                *args[2:], 0, work_stride,
+                addr(work[worker * work_stride:]), addr(result[first:last]),
+            )
+
+        if parallel_batch:
+            list(_DISTANCE_POOL.map(run_chunk, range(work_slots)))
+        else:
+            run_chunk(0)
         if settings.max_length_diff is not None:
             for i, (aidx, bidx) in enumerate(pairs_list):
                 if abs(len(arrays[aidx]) - len(arrays[bidx])) > settings.max_length_diff:

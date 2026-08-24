@@ -228,6 +228,23 @@ def test_multivariate_distance_paths_and_matrix():
     )
 
 
+def test_warping_paths_simd_fill_tail():
+    a = np.array([0.0, 1.0])
+    b = np.array([0.0, 0.5])
+    expected_d, expected_paths = upstream_dtw.warping_paths(a, b)
+    actual_d, actual_paths = dtw.warping_paths(a, b)
+    assert actual_d == pytest.approx(expected_d)
+    assert np.allclose(actual_paths, expected_paths)
+
+
+@pytest.mark.parametrize("a,b", [([], [1.0]), ([1.0], []), ([], [])])
+def test_empty_warping_paths_remain_initialized(a, b):
+    expected_d, expected_paths = upstream_dtw.warping_paths(a, b)
+    actual_d, actual_paths = dtw.warping_paths(a, b)
+    assert actual_d == expected_d
+    assert np.allclose(actual_paths, expected_paths)
+
+
 def test_dba_one_step_and_loop():
     series = np.array(
         [

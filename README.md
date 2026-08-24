@@ -90,24 +90,27 @@ warm runs.
 
 | case | mojo-dtaidistance | dtaidistance | result |
 | --- | ---: | ---: | ---: |
-| distance (4096 x 4096) | 48.50 ms | 96.94 ms | 2.00x faster |
-| distance window=32 (50k x 50k) | 8.24 ms | 17.14 ms | 2.08x faster |
-| DTW_D (1200 x 1200 x 4) | 8.46 ms | 11.12 ms | 1.31x faster |
-| warping_paths (1500 x 1500) | 24.00 ms | 23.90 ms | 1.00x slower |
-| distance_matrix serial (64 x 256) | 384.01 ms | 771.58 ms | 2.01x faster |
-| distance_matrix parallel (64 x 256) | 48.56 ms | 51.76 ms | 1.07x faster |
-| DBA one update (48 x 256) | 20.48 ms | 27.65 ms | 1.35x faster |
-| KMeans k=3, 3 it (45 x 192) | 105.89 ms | 283.54 ms | 2.68x faster |
+| distance (4096 x 4096) | 45.70 ms | 89.80 ms | 1.96x faster |
+| distance window=32 (50k x 50k) | 7.76 ms | 17.18 ms | 2.21x faster |
+| DTW_D (1200 x 1200 x 4) | 7.80 ms | 9.09 ms | 1.17x faster |
+| warping_paths (1500 x 1500) | 21.45 ms | 20.64 ms | 1.04x slower |
+| distance_matrix serial (64 x 256) | 375.03 ms | 742.43 ms | 1.98x faster |
+| distance_matrix parallel (64 x 256) | 24.16 ms | 31.13 ms | 1.29x faster |
+| DBA one update (48 x 256) | 24.41 ms | 32.70 ms | 1.34x faster |
+| KMeans k=3, 3 it (45 x 192) | 97.22 ms | 212.73 ms | 2.19x faster |
 
 The common squared-Euclidean distance kernel overwrites each active row
 directly instead of clearing it first. SIMD handles bulk initialization and
-Euclidean reductions, including scalar remainder elements. Large independent
-distance batches use bounded CPU parallelism with private, cache-padded scratch
-rows; small batches stay serial to avoid launch overhead. Contiguous NumPy
-batches remain zero-copy across the FFI boundary.
+Euclidean reductions, including scalar remainder elements. Full path matrices
+are allocated uninitialized and filled once in Mojo. Large independent distance
+batches use a bounded CPU thread pool with private, cache-padded scratch rows;
+small batches stay in one serial FFI call to avoid launch overhead. Contiguous
+NumPy batches remain zero-copy across the FFI boundary, including the worker
+slices used by parallel distance matrices.
 
-There is no GPU path. DTW's left/up/diagonal recurrence limits parallelism, so
-this port concentrates on CPU kernels.
+There is no GPU path. DTW's left/up/diagonal recurrence has low arithmetic
+intensity and a serial dependency within each row, so it does not justify GPU
+transfer and launch overhead. This port concentrates on CPU kernels.
 
 ## How it works
 
